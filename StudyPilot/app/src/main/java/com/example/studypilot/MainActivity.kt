@@ -853,7 +853,296 @@ fun PracticeScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-      
+
+
+
+        if (quizFinished) {
+            val passed = score >= 7
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        if (passed) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        null,
+                        tint = if (passed) Green else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        if (passed) "Quiz Passed! 🎉" else "Needs Improvement ⚠️",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Navy
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Subject: $selectedSubject", color = Color.Gray, fontSize = 14.sp)
+                    Spacer(Modifier.height(20.dp))
+                    Text("Your Final Score", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Blue, letterSpacing = 1.5.sp)
+                    Text("$score / ${questions.size}", fontSize = 48.sp, fontWeight = FontWeight.Bold, color = if (passed) Green else MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(8.dp))
+
+                    val message = if (passed) {
+                        "Congratulations! You scored 7 or higher. Completion mark unlocked! ✅"
+                    } else {
+                        "You scored $score out of ${questions.size}. You need at least 7 correct answers (70%) to pass. Please review your study notes and retake the quiz."
+                    }
+                    Text(message, color = Color.Gray, fontSize = 14.sp, textAlign = TextAlign.Center)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            if (passed) {
+                Button(
+                    onClick = {
+                        index = 0
+                        selected = null
+                        score = 0
+                        quizFinished = false
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Green)
+                ) {
+                    Icon(Icons.Default.Check, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Quiz Completed ✅", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = {
+                        index = 0
+                        selected = null
+                        score = 0
+                        quizFinished = false
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Navy)
+                ) {
+                    Icon(Icons.Default.Refresh, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Retake Quiz", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        } else {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("SUBJECT: $selectedSubject".uppercase(), color = Blue, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("QUESTION ${index + 1} OF ${questions.size}", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Text(question.questionText, color = Navy, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(Modifier.height(18.dp))
+                    question.shuffledOptions.forEach { option ->
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp).clickable { if (selected == null) selected = option },
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = when {
+                                    selected == option && option == question.correctAnswer -> Color(0xFFE5F7EF)
+                                    selected == option -> Color(0xFFFFEEEE)
+                                    else -> Color.White
+                                }
+                            )
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected == option, onClick = { if (selected == null) selected = option })
+                                Spacer(Modifier.width(8.dp))
+                                Text(option, color = Navy)
+                            }
+                        }
+                    }
+                    if (selected != null) {
+                        Spacer(Modifier.height(12.dp))
+                        val correct = selected == question.correctAnswer
+                        Text(
+                            if (correct) "Correct! Great work." else "Correct answer: ${question.correctAnswer}",
+                            color = if (correct) Green else MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Score: $score / ${questions.size}", color = Color.Gray, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            if (selected != null) {
+                Spacer(Modifier.height(16.dp))
+                val correct = selected == question.correctAnswer
+                Button(
+                    onClick = {
+                        if (correct) score++
+                        if (index < questions.lastIndex) {
+                            index++
+                            selected = null
+                        } else {
+                            quizFinished = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    Text(if (index == questions.lastIndex) "Submit Quiz" else "Next question", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(40.dp))
+    }
+}
+
+@Composable
+fun ProgressScreen(tasks: List<StudyTask>) {
+    val completed = tasks.count { it.completed }
+    val percent = if (tasks.isEmpty()) 0 else completed * 100 / tasks.size
+    val xp = completed * 50 + tasks.size * 25
+    val level = (xp / 150) + 1
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+        ScreenTitle("Your Progress & Analytics", "Track your learning journey and achievements")
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(20.dp)) {
+                Text("OVERALL COMPLETION", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("$percent%", color = Navy, fontSize = 42.sp, fontWeight = FontWeight.Bold)
+                LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.fillMaxWidth().height(10.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("$completed completed out of ${tasks.size} total tasks", color = Color.Gray)
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatCard("Level $level", "$xp XP", Icons.Default.EmojiEvents, Modifier.weight(1f))
+            StatCard("Streak", "3 Days 🔥", Icons.Default.LocalFireDepartment, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("Unlocked Badges", fontSize = 18.sp, color = Navy, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BadgeChip("🌱 Beginner", true)
+            BadgeChip("🔥 Streak", true)
+            BadgeChip("⭐ Achiever", completed > 0)
+            BadgeChip("⚡ Quiz Master", true)
+        }
+        Spacer(Modifier.height(20.dp))
+        val subjects = tasks.groupBy { it.subject }
+        Text("Subject Mastery Chart", fontSize = 18.sp, color = Navy, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(20.dp)) {
+                if (subjects.isEmpty()) {
+                    Text("No subjects yet. Add tasks to view chart.", color = Color.Gray, fontSize = 13.sp)
+                } else {
+                    Canvas(modifier = Modifier.fillMaxWidth().height(160.dp)) {
+                        val barWidth = size.width / (subjects.size * 2f).coerceAtLeast(1f)
+                        var x = barWidth / 2f
+                        subjects.forEach { (_, list) ->
+                            val ratio = list.count { it.completed }.toFloat() / list.size.coerceAtLeast(1)
+                            val barHeight = size.height * ratio
+                            drawRect(
+                                color = Blue,
+                                topLeft = Offset(x, size.height - barHeight),
+                                size = Size(barWidth, barHeight.coerceAtLeast(4f))
+                            )
+                            x += barWidth * 2f
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("Subject overview", fontSize = 18.sp, color = Navy, fontWeight = FontWeight.Bold)
+        if (subjects.isEmpty()) Text("Add study tasks to see your subject progress.", color = Color.Gray, modifier = Modifier.padding(top = 12.dp))
+        subjects.forEach { (subject, list) ->
+            val done = list.count { it.completed }
+            Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(subject, fontWeight = FontWeight.SemiBold, color = Navy)
+                    Text("$done/${list.size}", color = Color.Gray)
+                }
+                LinearProgressIndicator(progress = { done.toFloat() / list.size }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun BadgeChip(text: String, unlocked: Boolean) {
+    Surface(
+        color = if (unlocked) PaleBlue else Color.LightGray.copy(alpha = 0.3f),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            color = if (unlocked) Navy else Color.Gray,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+data class StudyMaterial(
+    val title: String,
+    val subtitle: String,
+    val content: String,
+    val keyPoints: List<String>
+)
+
+val sampleMaterials = listOf(
+    StudyMaterial(
+        "Database Management Systems",
+        "Revision notes • Offline sample",
+        "A Database Management System (DBMS) is software designed to store, retrieve, query, and manage data securely in a database. Key concepts include ACID properties, normalization (1NF, 2NF, 3NF, BCNF), indexing (clustered and non-clustered), and SQL joins.",
+        listOf(
+            "Atomicity, Consistency, Isolation, Durability (ACID)",
+            "Normalization eliminates redundancy and update anomalies",
+            "SQL Joins: INNER, LEFT, RIGHT, FULL OUTER",
+            "Indexes speed up data retrieval at the cost of write performance"
+        )
+    ),
+    StudyMaterial(
+        "Data Structures and Algorithms",
+        "Quick reference • Offline sample",
+        "Data structures are specialized formats for organizing and storing data efficiently. Algorithms are step-by-step procedures for solving computational problems. Understanding time and space complexity (Big O notation) is essential.",
+        listOf(
+            "Linear structures: Arrays, Linked Lists, Stacks, Queues",
+            "Non-linear structures: Trees, Graphs, Heaps",
+            "Sorting algorithms: Merge Sort, Quicksort, Bubble Sort",
+            "Graph traversals: Breadth-First Search (BFS) and Depth-First Search (DFS)"
+        )
+    ),
+    StudyMaterial(
+        "Programming Fundamentals",
+        "Practice guide • Offline sample",
+        "Core principles of object-oriented programming (OOP) and software design. Emphasizes clean code, reusability, and modular architecture.",
+        listOf(
+            "Four pillars of OOP: Encapsulation, Inheritance, Polymorphism, Abstraction",
+            "SOLID principles for maintainable software architecture",
+            "Control flow: conditionals, loops, and recursion",
+            "Error handling and exception management"
+        )
+    ),
+    StudyMaterial(
+        "Exam Preparation Checklist",
+        "Study checklist • Offline sample",
+        "A strategic guide to preparing effectively for examinations, managing time, and retaining complex concepts.",
+        listOf(
+            "Create a structured study schedule using StudyPilot planner",
+            "Practice active recall with flashcards and practice quizzes",
+            "Use Pomodoro 25-minute focus sessions to prevent burnout",
+            "Review past exam papers and summarize key formulas"
+        )
+    )
+)
+
+@Composable
+fun MaterialsScreen(tasks: List<StudyTask>, onSelect: (StudyMaterial) -> Unit) {
+    val dynamicMaterials = tasks.map { task ->
+        StudyMaterial(
+            title = task.subject,
+            subtitle = "Topic: ${task.topic} • Offline study notes",
+            content = "Comprehensive study notes and revision guide for ${task.subject}, specifically focusing on '${task.topic}'. Review these core concepts, definitions, and problem-solving strategies to ensure thorough preparation.",
+            keyPoints = listOf(
+                "Fundamental definitions and core theory of ${task.topic}",
+                "Practical applications and methodologies in ${task.subject}",
+                "Key terminology, formulas, and critical problem-solving steps",
+                "Self-assessment and exam preparation guidelines"
+            )
+        )
+    }.distinctBy { it.title }
 
     val allMaterials = (dynamicMaterials + sampleMaterials).distinctBy { it.title }
 
