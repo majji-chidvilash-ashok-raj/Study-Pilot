@@ -1,5 +1,4 @@
 package com.example.studypilot
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,14 +70,12 @@ fun LoginScreen(
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation()
                 )
-
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(8.dp))
+                    
                     Text(text = errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
-
                 Spacer(modifier = Modifier.height(24.dp))
-
                 Button(
                     onClick = { onLogin(email, password) },
                     modifier = Modifier
@@ -89,9 +86,7 @@ fun LoginScreen(
                 ) {
                     Text("Login", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
                 TextButton(onClick = onNavigateToRegister) {
                     Text("Don't have an account? Register", color = Color(0xFF2878D0))
                 }
