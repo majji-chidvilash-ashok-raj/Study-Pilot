@@ -1,4 +1,485 @@
 package com.example.studypilot
+import android.os.Bundle
+import android.os.Build
+import android.speech.tts.TextToSpeech
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material3.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
+import androidx.navigation.compose.*
+import androidx.navigation.navArgument
+import com.example.studypilot.data.*
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
+import java.util.Locale
+import java.util.Random
+
+private val Navy = Color(0xFF173B70)
+private val Blue = Color(0xFF2878D0)
+private val PaleBlue = Color(0xFFEAF3FF)
+private val Page = Color(0xFFF6F8FC)
+private val Green = Color(0xFF249B70)
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val database = StudyPilotDatabase.getDatabase(applicationContext)
+        val repository = StudyTaskRepository(database.studyTaskDao())
+        val userRepository = UserRepository(database.userDao())
+        val factory = StudyPilotViewModelFactory(repository, userRepository)
+
+        setContent {
+            val vm: StudyPilotViewModel = viewModel(factory = factory)
+            StudyPilotTheme {
+                val currentUser by vm.currentUser.collectAsState()
+                if (currentUser == null) {
+                    AuthRoot(vm)
+                } else {
+                    StudyPilotApp(vm)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StudyPilotTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> darkColorScheme(
+            primary = Color(0xFF72D6B0),
+            secondary = Blue,
+            background = Color(0xFF121212),
+            surface = Color(0xFF1E1E1E)
+        )
+        else -> lightColorScheme(
+            primary = Navy,
+            secondary = Blue,
+            background = Page,
+            surface = Color.White
+        )
+    }
+    MaterialTheme(
+        colorScheme = colorScheme,
+        content = content
+    )
+}
+
+@Composable
+fun AuthRoot(vm: StudyPilotViewModel) {
+    val nav = rememberNavController()
+    val authError by vm.authError.collectAsState()
+    val context = LocalContext.current
+
+    NavHost(navController = nav, startDestination = "login") {
+        composable("login") {
+            LoginScreen(
+                onLogin = { email, pass ->
+                    vm.login(email, pass) {
+                        Toast.makeText(context, "Login successful", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onNavigateToRegister = { nav.navigate("register") },
+                errorMessage = authError
+            )
+        }
+        composable("register") {
+            RegisterScreen(
+                onRegister = { username, email, pass ->
+                    vm.register(username, email, pass) {
+                        Toast.makeText(context, "Account created successfully", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onNavigateToLogin = { nav.popBackStack() },
+                errorMessage = authError
+            )
+        }
+    }
+}
+
+@Composable
+fun StudyPilotApp(vm: StudyPilotViewModel) {
+    val nav = rememberNavController()
+    val tasks by vm.tasks.collectAsState()
+    val context = LocalContext.current
+    val backStack by nav.currentBackStackEntryAsState()
+    val current = backStack?.destination?.route ?: "home"
+
+    Scaffold(
+        containerColor = Page,
+        bottomBar = {
+            NavigationBar(containerColor = Color.White) {
+                val tabs = listOf(
+                    Triple("home", "Home", Icons.Default.Home),
+                    Triple("planner", "Planner", Icons.Default.CalendarMonth),
+                    Triple("practice", "Practice", Icons.Default.Quiz),
+                    Triple("progress", "Progress", Icons.Default.Insights),
+                    Triple("materials", "Materials", Icons.AutoMirrored.Filled.MenuBook)
+                )
+                tabs.forEach { (route, label, icon) ->
+                    NavigationBarItem(
+                        selected = current == route,
+                        onClick = {
+                            nav.navigate(route) {
+                                popUpTo("home") { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        },
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label, fontSize = 10.sp) }
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        NavHost(
+            navController = nav,
+            startDestination = "home",
+            modifier = Modifier.padding(padding)
+        ) {
+            composable("home") {
+                val currentUser by vm.currentUser.collectAsState()
+                HomeScreen(
+                    tasks = tasks,
+                    username = currentUser?.username ?: "Student",
+                    onPlanner = { nav.navigate("planner") },
+                    onPractice = { nav.navigate("practice") },
+                    onPomodoro = { nav.navigate("pomodoro") },
+                    onFlashcards = { nav.navigate("flashcards") },
+                    onTask = { nav.navigate("detail/$it") },
+                    onLogout = { vm.logout() }
+                )
+            }
+            composable("planner") {
+                PlannerScreen(tasks, onAdd = { nav.navigate("add") },
+                    onTask = { nav.navigate("detail/$it") })
+            }
+            composable("add") {
+                AddTaskScreen(onSave = { subject, topic, minutes, priority ->
+                    vm.addTask(subject, topic, minutes, priority) {
+                        Toast.makeText(context, "Study task saved", Toast.LENGTH_SHORT).show()
+                        nav.popBackStack()
+                    }
+                }, onCancel = { nav.popBackStack() })
+            }
+            composable("detail/{taskId}", arguments = listOf(navArgument("taskId") { type = NavType.IntType })) { entry ->
+                val id = entry.arguments?.getInt("taskId") ?: -1
+                val task = tasks.firstOrNull { it.id == id }
+                if (task == null) {
+                    EmptyState("Task not found", "It may have been deleted.")
+                } else {
+                    TaskDetailScreen(task,
+                        onBack = { nav.popBackStack() },
+                        onComplete = { vm.toggleCompleted(task); Toast.makeText(context, "Task updated", Toast.LENGTH_SHORT).show() },
+                        onDelete = {
+                            vm.deleteTask(task) {
+                                Toast.makeText(context, "Task deleted", Toast.LENGTH_SHORT).show()
+                                nav.popBackStack()
+                            }
+                        },
+                        onPractice = { subject, topic -> nav.navigate("practice/$subject?topic=$topic") },
+                        onOpenMaterial = { subject -> nav.navigate("materials?subject=$subject") }
+                    )
+                }
+            }
+            composable(
+                "practice/{subject}?topic={topic}",
+                arguments = listOf(
+                    navArgument("subject") { defaultValue = "" },
+                    navArgument("topic") { defaultValue = "" }
+                )
+            ) { entry ->
+                val subject = entry.arguments?.getString("subject") ?: ""
+                val topic = entry.arguments?.getString("topic") ?: ""
+                PracticeScreen(
+                    tasks = tasks,
+                    initialSubject = subject,
+                    initialTopic = topic,
+                    onMarkCompleted = { subj ->
+                        tasks.filter { it.subject.equals(subj, ignoreCase = true) && !it.completed }.forEach { task ->
+                            vm.setCompleted(task, true)
+                        }
+                    }
+                )
+            }
+            composable("practice") {
+                PracticeScreen(
+                    tasks = tasks,
+                    initialSubject = "",
+                    initialTopic = "",
+                    onMarkCompleted = { subj ->
+                        tasks.filter { it.subject.equals(subj, ignoreCase = true) && !it.completed }.forEach { task ->
+                            vm.setCompleted(task, true)
+                        }
+                    }
+                )
+            }
+            composable("progress") { ProgressScreen(tasks) }
+            composable(
+                "materials?subject={subject}",
+                arguments = listOf(navArgument("subject") { defaultValue = "" })
+            ) { entry ->
+                val subject = entry.arguments?.getString("subject") ?: ""
+                var selectedMaterial by remember(subject) { mutableStateOf<StudyMaterial?>(null) }
+
+                val dynamicMats = tasks.map { task ->
+                    StudyMaterial(
+                        title = task.subject,
+                        subtitle = "Topic: ${task.topic} • Offline study notes",
+                        content = "Comprehensive study notes and revision guide for ${task.subject}, specifically focusing on '${task.topic}'. Review these core concepts, definitions, and problem-solving strategies to ensure thorough preparation.",
+                        keyPoints = listOf(
+                            "Fundamental definitions and core theory of ${task.topic}",
+                            "Practical applications and methodologies in ${task.subject}",
+                            "Key terminology, formulas, and critical problem-solving steps",
+                            "Self-assessment and exam preparation guidelines"
+                        )
+                    )
+                }.distinctBy { it.title }
+                val allMats = (dynamicMats + sampleMaterials).distinctBy { it.title }
+
+                if (subject.isNotBlank()) {
+                    val directMat = allMats.find { it.title.equals(subject, ignoreCase = true) }
+                        ?: StudyMaterial(
+                            title = subject,
+                            subtitle = "Topic: Core Revision • Offline study notes",
+                            content = "Comprehensive study notes and revision guide for $subject. Review these core concepts, definitions, and problem-solving strategies.",
+                            keyPoints = listOf(
+                                "Fundamental definitions and core theory of $subject",
+                                "Practical applications and methodologies",
+                                "Key terminology and critical problem-solving steps",
+                                "Self-assessment guidelines"
+                            )
+                        )
+                    MaterialReaderScreen(
+                        material = directMat,
+                        onBack = { nav.popBackStack() },
+                        onTakeQuiz = { subj, top -> nav.navigate("practice/$subj?topic=$top") }
+                    )
+                } else {
+                    if (selectedMaterial == null) {
+                        MaterialsScreen(tasks, onSelect = { selectedMaterial = it })
+                    } else {
+                        MaterialReaderScreen(
+                            material = selectedMaterial!!,
+                            onBack = { selectedMaterial = null },
+                            onTakeQuiz = { subj, top -> nav.navigate("practice/$subj?topic=$top") }
+                        )
+                    }
+                }
+            }
+            composable("pomodoro") { PomodoroScreen(onBack = { nav.popBackStack() }) }
+            composable("flashcards") { FlashcardsScreen(onBack = { nav.popBackStack() }) }
+        }
+    }
+}
+
+@Composable
+fun ScreenTitle(title: String, subtitle: String? = null) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
+        Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Navy)
+        if (subtitle != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(subtitle, color = Color.Gray, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+fun HomeScreen(
+    tasks: List<StudyTask>,
+    username: String,
+    onPlanner: () -> Unit,
+    onPractice: () -> Unit,
+    onPomodoro: () -> Unit,
+    onFlashcards: () -> Unit,
+    onTask: (Int) -> Unit,
+    onLogout: () -> Unit
+) {
+    val completed = tasks.count { it.completed }
+    val percent = if (tasks.isEmpty()) 0 else completed * 100 / tasks.size
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 20.dp)
+    ) {
+        item {
+            Column(Modifier.padding(20.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("STUDYPILOT", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                    TextButton(onClick = onLogout) {
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Logout", color = Color.Gray, fontSize = 12.sp)
+                    }
+                }
+                Text("Good day, $username! 👋", color = Navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("Plan smarter. Study offline. Improve faster.", color = Color.Gray, fontSize = 13.sp)
+                Spacer(Modifier.height(18.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = Navy), shape = RoundedCornerShape(22.dp)) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("YOUR DAILY PROGRESS", color = Color.White.copy(alpha = .75f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text("$percent%", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(8.dp))
+                            Text("$completed of ${tasks.size} tasks completed", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        LinearProgressIndicator(
+                            progress = { percent / 100f },
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            color = Color(0xFF72D6B0),
+                            trackColor = Color.White.copy(alpha = .2f)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatCard("Study tasks", tasks.size.toString(), Icons.Default.TaskAlt, Modifier.weight(1f))
+                    StatCard("Completed", completed.toString(), Icons.Default.CheckCircle, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(12.dp))
+                val xp = completed * 50 + tasks.size * 25
+                val level = (xp / 150) + 1
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(48.dp).background(PaleBlue, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.EmojiEvents, null, tint = Blue, modifier = Modifier.size(28.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Level $level Scholar", color = Navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("$xp Total XP • 3-Day Streak 🔥", color = Color.Gray, fontSize = 12.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Today's study plan", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Navy)
+                    TextButton(onClick = onPlanner) { Text("View all") }
+                }
+            }
+        }
+        if (tasks.isEmpty()) {
+            item { EmptyState("Your study plan is empty", "Add your first task to get started.") }
+        } else {
+            items(tasks.take(4), key = { it.id }) { task ->
+                TaskCard(task) { onTask(task.id) }
+            }
+        }
+        item {
+            Spacer(Modifier.height(14.dp))
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onPlanner, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text("Plan study")
+                    }
+                    OutlinedButton(onClick = onPractice, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Bolt, null); Spacer(Modifier.width(5.dp)); Text("Practice")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onPomodoro, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Timer, null); Spacer(Modifier.width(5.dp)); Text("Focus Timer")
+                    }
+                    OutlinedButton(onClick = onFlashcards, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Style, null); Spacer(Modifier.width(5.dp)); Text("Flashcards")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatCard(label: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Icon(icon, null, tint = Blue)
+            Spacer(Modifier.height(8.dp))
+            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Navy)
+            Text(label, color = Color.Gray, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+fun PlannerScreen(tasks: List<StudyTask>, onAdd: () -> Unit, onTask: (Int) -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                ScreenTitle("Study Planner", "Organise your subjects and study sessions")
+            }
+            FilledTonalIconButton(onClick = onAdd) {
+                Icon(Icons.Default.Add, contentDescription = "Add task")
+            }
+        }
+        if (tasks.isEmpty()) {
+            EmptyState("No study tasks yet", "Tap + to create your first study session.")
+        } else {
+            LazyColumn(contentPadding = PaddingValues(bottom = 20.dp)) {
+                items(tasks, key = { it.id }) { task -> TaskCard(task) { onTask(task.id) } }
+            }
+        }
+    }
+}
+
+@Composable
+fun TaskCard(task: StudyTask, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(42.dp).background(PaleBlue, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                Icon(if (task.completed) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.MenuBook, null, tint = Blue)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(task.subject, fontWeight = FontWeight.Bold, color = Navy)
+                Text(task.topic, color = Color.Gray, fontSize = 13.sp)
+                Text("${task.durationMinutes} min • ${task.priority} priority", color = Blue, fontSize = 11.sp)
+            }
+            if (task.completed) Icon(Icons.Default.CheckCircle, null, tint = Green)
+            else Icon(Icons.Default.ChevronRight, null, tint = Color.Gray)
+        }
+    }
+}
 
 
 @Composable
